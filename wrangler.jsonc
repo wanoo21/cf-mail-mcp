@@ -1,0 +1,39 @@
+{
+  "name": "mail-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "traces": { "enabled": true },
+  },
+  "triggers": {
+    "crons": ["0 3 * * *"],
+  },
+  "vars": {
+    "MAIL_ADDRESS": "agent@mail.example.com",
+    "ALLOWED_RECIPIENTS": "owner@example.com",
+    "RETENTION_DAYS": "90",
+    "DAILY_SEND_CAP": "20",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mail-mcp",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "mail-mcp",
+    },
+  ],
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["agent@mail.example.com"],
+    },
+  ],
+}

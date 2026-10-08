@@ -1,0 +1,42 @@
+{
+  "name": "mail-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "traces": { "enabled": true },
+  },
+  "triggers": {
+    "crons": ["0 3 * * *"],
+  },
+  "vars": {
+    // One mailbox for this deployment. Sending always uses this address.
+    "MAIL_ADDRESS": "agent@mail.example.com",
+    // Comma-separated. Outbound mail is rejected unless the recipient is listed.
+    "ALLOWED_RECIPIENTS": "you@example.com",
+    "RETENTION_DAYS": "90",
+    "DAILY_SEND_CAP": "20",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mail-mcp",
+      "database_id": "PASTE_D1_ID",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "mail-mcp",
+    },
+  ],
+  "send_email": [
+    {
+      "name": "EMAIL",
+      // Must match MAIL_ADDRESS. Add more entries here if you later accept more than one address.
+      "allowed_sender_addresses": ["agent@mail.example.com"],
+    },
+  ],
+}
