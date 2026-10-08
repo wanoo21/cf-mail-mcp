@@ -1,5 +1,7 @@
 # Set up with an AI agent
 
+Alternatively, use the [Grok Bot (BYO Mailbox)](https://x.ai/bot/bMpYhKvs4LJbTJyvS1IvO) — a ready-made bot that walks through this setup.
+
 Paste the block below into an agent that has a shell and your Cloudflare API token in `CLOUDFLARE_API_TOKEN`. Do not paste the token into the chat.
 
 There is also a [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/wanoo21/cf-mail-mcp) button in the README. It provisions the Worker, D1, and R2 only. Routing, Sending, and the inbound rule stay manual.
