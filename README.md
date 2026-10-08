@@ -4,6 +4,8 @@
 
 [Set up with an AI agent](SETUP_PROMPT.md)
 
+[Set up with a Grok Bot (BYO Mailbox)](https://x.ai/bot/bMpYhKvs4LJbTJyvS1IvO)
+
 A Cloudflare Worker that gives one AI agent an email address on your domain. Incoming mail is stored in D1 and R2; the agent reads and sends through a remote MCP server over streamable HTTP.
 
 The deploy button creates the Worker, D1, and R2 and prompts for `MCP_TOKEN` and the mailbox vars. It does **not** onboard Email Routing or Email Sending, and it will not add MX. After the Worker is up, enable Routing on the apex (never if that apex already has other MX), enable Sending for the mailbox domain, then create the inbound rule (`addresses` on the next deploy, or `wrangler email routing rules create`).
