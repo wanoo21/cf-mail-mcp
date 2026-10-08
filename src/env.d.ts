@@ -27,6 +27,7 @@ declare namespace Cloudflare {
     MCP_TOKEN: string;
     WEBHOOK_URL?: string;
     WEBHOOK_SECRET?: string;
+    WEBHOOK_BEARER?: string;
     TEST_MIGRATIONS?: { name: string; queries: string[] }[];
   }
 }
