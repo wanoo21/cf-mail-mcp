@@ -54,12 +54,15 @@ A Cloudflare Worker that gives one AI agent an email address on your domain. Inc
 
 ## Webhook (optional)
 
-To get a push when mail arrives, set both secrets:
+To get a push when mail arrives, set `WEBHOOK_URL` and any auth the receiver needs:
 
 ```bash
 npx wrangler secret put WEBHOOK_URL
 npx wrangler secret put WEBHOOK_SECRET
+npx wrangler secret put WEBHOOK_BEARER
 ```
+
+Optional `WEBHOOK_BEARER` adds `Authorization: Bearer ...`. HMAC (`WEBHOOK_SECRET`) still works; use either or both.
 
 The Worker `POST`s this JSON (no body) and does not fail delivery if the hook errors. Auto-replies are stored but not pushed.
 

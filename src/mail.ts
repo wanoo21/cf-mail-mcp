@@ -83,6 +83,8 @@ export async function postWebhook(env: Env, event: WebhookEvent, now = Date.now(
   };
   const secret = env.WEBHOOK_SECRET?.trim();
   if (secret) headers["x-signature"] = await signWebhook(secret, timestamp, body);
+  const bearer = env.WEBHOOK_BEARER?.trim();
+  if (bearer) headers.authorization = `Bearer ${bearer}`;
   const res = await fetch(url, { method: "POST", headers, body });
   if (!res.ok) throw new Error(`webhook ${res.status}`);
 }

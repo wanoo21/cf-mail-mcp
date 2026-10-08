@@ -72,10 +72,40 @@ describe("inbound handler", () => {
     const posted = await seen!.text();
     expect(seen?.headers.get("x-timestamp")).toBe(ts);
     expect(seen?.headers.get("x-signature")).toBe(sig);
+    expect(seen?.headers.get("authorization")).toBeNull();
     expect(posted).toContain("id-1");
     expect(posted).not.toContain("Please ignore");
     expect(webhookFresh(ts, now)).toBe(true);
     expect(webhookFresh(ts, now + 6 * 60 * 1000)).toBe(false);
+  });
+
+  it("sends a bearer token when WEBHOOK_BEARER is set", async () => {
+    const event = {
+      type: "email.received" as const,
+      address: "agent@mail.example.com",
+      from: "alice@example.com",
+      subject: "Hi",
+      message_id: "id-1",
+      received_at: "2026-10-08T00:00:00.000Z",
+    };
+    const now = Date.parse("2026-10-08T12:00:00.000Z");
+    const env = testEnv({
+      WEBHOOK_URL: "https://webhook.test/hook",
+      WEBHOOK_SECRET: "hook-secret",
+      WEBHOOK_BEARER: "receiver-key",
+    });
+    let seen: Request | undefined;
+    const orig = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      seen = new Request(input, init);
+      return new Response("ok");
+    };
+    await postWebhook(env, event, now);
+    globalThis.fetch = orig;
+    expect(seen?.headers.get("authorization")).toBe("Bearer receiver-key");
+    expect(seen?.headers.get("x-signature")).toBe(
+      await signWebhook("hook-secret", String(Math.floor(now / 1000)), JSON.stringify(event)),
+    );
   });
 
   it("skips the webhook for auto-replies", async () => {

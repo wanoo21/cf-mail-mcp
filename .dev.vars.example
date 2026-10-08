@@ -1,4 +1,5 @@
 MCP_TOKEN=generate-a-long-random-string
-# Optional. Omit both to skip event push.
+# Optional. WEBHOOK_URL is required to push. HMAC and bearer may be used together or alone.
 WEBHOOK_URL=
 WEBHOOK_SECRET=
+WEBHOOK_BEARER=
