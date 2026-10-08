@@ -26,7 +26,14 @@ export function allowedRecipients(env: Env) {
 }
 
 export function canSendTo(env: Env, to: string) {
-  return allowedRecipients(env).includes(norm(to));
+  const dest = norm(to);
+  const rules = allowedRecipients(env);
+  if (rules.includes("*")) return true;
+  if (rules.includes(dest)) return true;
+  const at = dest.lastIndexOf("@");
+  if (at < 1 || at === dest.length - 1) return false;
+  const domain = dest.slice(at + 1);
+  return rules.includes(`@${domain}`) || rules.includes(`*@${domain}`);
 }
 
 export function retentionDays(env: Env) {

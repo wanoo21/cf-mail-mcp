@@ -119,7 +119,7 @@ export function createMailServer(env: Env, origin: string) {
   server.registerTool(
     "send_message",
     {
-      description: "Send from the configured mailbox address. Recipients must be on ALLOWED_RECIPIENTS. Daily cap applies.",
+      description: "Send from the configured mailbox address. Recipients must match ALLOWED_RECIPIENTS (exact address, @domain / *@domain, or *). Daily cap applies.",
       inputSchema: {
         to: z.union([z.string(), z.array(z.string())]),
         subject: z.string(),
@@ -145,7 +145,7 @@ export function createMailServer(env: Env, origin: string) {
   server.registerTool(
     "reply_to_message",
     {
-      description: "Reply to a stored message. Sets In-Reply-To and References. Recipient must be on ALLOWED_RECIPIENTS.",
+      description: "Reply to a stored message. Sets In-Reply-To and References. Recipient must match ALLOWED_RECIPIENTS (exact address, @domain / *@domain, or *).",
       inputSchema: {
         id: z.string(),
         text: z.string(),
