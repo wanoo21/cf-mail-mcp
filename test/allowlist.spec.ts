@@ -33,6 +33,40 @@ describe("allowlist and cap", () => {
     expect("messageId" in ok).toBe(true);
   });
 
+  it("opens sending when ALLOWED_RECIPIENTS is *", async () => {
+    const env = testEnv({ ALLOWED_RECIPIENTS: "*" });
+    env.EMAIL = { async send() { return { messageId: "cf-test" }; } };
+    expect(canSendTo(env, "stranger@elsewhere.com")).toBe(true);
+    const ok = await sendMail(env, { to: "stranger@elsewhere.com", subject: "x", text: "hi" });
+    expect("messageId" in ok).toBe(true);
+  });
+
+  it("matches @domain and *@domain exactly, mixed with addresses", () => {
+    const env = testEnv({ ALLOWED_RECIPIENTS: "alice@x.com,@example.com,*@other.com" });
+    expect(canSendTo(env, "alice@x.com")).toBe(true);
+    expect(canSendTo(env, "ALICE@x.com")).toBe(true);
+    expect(canSendTo(env, "bob@x.com")).toBe(false);
+    expect(canSendTo(env, "anyone@example.com")).toBe(true);
+    expect(canSendTo(env, "anyone@sub.example.com")).toBe(false);
+    expect(canSendTo(env, "anyone@other.com")).toBe(true);
+    expect(canSendTo(env, "anyone@sub.other.com")).toBe(false);
+    expect(canSendTo(env, "nobody@nope.com")).toBe(false);
+  });
+
+  it("still caps and limits recipients in open mode", async () => {
+    const env = testEnv({ ALLOWED_RECIPIENTS: "*", DAILY_SEND_CAP: "1" });
+    env.EMAIL = { async send() { return { messageId: "cf-test" }; } };
+    const now = Date.parse("2026-10-08T15:00:00.000Z");
+    const many = Array.from({ length: 51 }, (_, i) => `u${i}@example.com`);
+    expect(await sendMail(env, { to: many, subject: "x", text: "hi" }, now)).toEqual({
+      error: "max 50 recipients",
+    });
+    expect("messageId" in (await sendMail(env, { to: "a@b.com", subject: "x", text: "hi" }, now))).toBe(true);
+    expect(await sendMail(env, { to: "c@d.com", subject: "x", text: "hi" }, now)).toEqual({
+      error: "daily send cap reached (1)",
+    });
+  });
+
   it("enforces the daily send cap", async () => {
     const env = testEnv({ DAILY_SEND_CAP: "2" });
     const now = Date.parse("2026-10-08T15:00:00.000Z");
