@@ -11,6 +11,7 @@ export type MessageRow = {
   auth_results: string | null;
   received_at: string;
   read: number;
+  auto_reply: number;
   raw_r2_key: string | null;
 };
 
@@ -53,8 +54,8 @@ export async function insertMessage(
     });
   }
   await env.DB.prepare(
-    `INSERT INTO messages (id, address, from_addr, to_addr, subject, rfc_message_id, in_reply_to, references_header, text_body, auth_results, received_at, read, raw_r2_key)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+    `INSERT INTO messages (id, address, from_addr, to_addr, subject, rfc_message_id, in_reply_to, references_header, text_body, auth_results, received_at, read, auto_reply, raw_r2_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
   )
     .bind(
       row.id,
@@ -68,6 +69,7 @@ export async function insertMessage(
       row.text_body,
       row.auth_results,
       row.received_at,
+      row.auto_reply,
       row.raw_r2_key,
     )
     .run();
@@ -110,12 +112,12 @@ export async function listMessages(env: Env, f: ListFilter) {
     where.push("(received_at < ? OR (received_at = ? AND id < ?))");
     binds.push(cur.received_at, cur.received_at, cur.id);
   }
-  const sql = `SELECT id, address, from_addr, to_addr, subject, rfc_message_id, received_at, read
+  const sql = `SELECT id, address, from_addr, to_addr, subject, rfc_message_id, received_at, read, auto_reply
     FROM messages ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
     ORDER BY received_at DESC, id DESC LIMIT ?`;
   const rows = await env.DB.prepare(sql)
     .bind(...binds, limit + 1)
-    .all<Pick<MessageRow, "id" | "address" | "from_addr" | "to_addr" | "subject" | "rfc_message_id" | "received_at" | "read">>();
+    .all<Pick<MessageRow, "id" | "address" | "from_addr" | "to_addr" | "subject" | "rfc_message_id" | "received_at" | "read" | "auto_reply">>();
   const extra = rows.results.length > limit;
   const page = extra ? rows.results.slice(0, limit) : rows.results;
   const last = page[page.length - 1];

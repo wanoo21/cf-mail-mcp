@@ -24,7 +24,7 @@ A Cloudflare Worker that gives one AI agent an email address on your domain. Inc
    npx wrangler r2 bucket create mail-mcp
    ```
 
-3. Copy the example config and fill in the D1 id, `MAIL_ADDRESS`, `ALLOWED_RECIPIENTS`, and `allowed_sender_addresses` (must match `MAIL_ADDRESS`):
+3. Copy the example config and fill in the D1 id, `MAIL_ADDRESS`, `addresses` (same address), `ALLOWED_RECIPIENTS`, `allowed_sender_addresses`, and `allowed_destination_addresses`. `ALLOWED_RECIPIENTS` and `allowed_destination_addresses` must list the same recipients. `allowed_sender_addresses` and `addresses` must match `MAIL_ADDRESS`.
 
    ```bash
    cp wrangler.example.jsonc wrangler.jsonc
@@ -37,22 +37,20 @@ A Cloudflare Worker that gives one AI agent an email address on your domain. Inc
    npx wrangler secret put MCP_TOKEN
    ```
 
-5. Deploy:
+5. In the Cloudflare dashboard, open the zone → **Compute** → **Email Service** → **Email Routing**. Select the **apex** zone, then **Settings** → **Subdomains**, and add the mail subdomain (for example `mail`).
+
+   **Do not onboard the apex domain if it already has mail.** Onboarding the apex, or adding Email Routing DNS without a subdomain, replaces the existing MX records and breaks current mail.
+
+6. Enable Email Sending for the **same subdomain**: **Compute** → **Email Service** → **Email Sending** → **Onboard Domain** → the subdomain. Do not onboard the apex.
+
+7. Deploy. Wrangler creates the routing rule from `addresses` (Wrangler 4.113+). Subdomains have no catch-all, so list the literal address.
 
    ```bash
    npx wrangler d1 migrations apply mail-mcp --remote
    npx wrangler deploy
    ```
 
-6. In the Cloudflare dashboard, open the zone → **Compute** → **Email Service** → **Email Routing**. Select the **apex** zone, then **Settings** → **Subdomains**, and add the mail subdomain (for example `mail`).
-
-   **Do not onboard the apex domain if it already has mail.** Onboarding the apex, or adding Email Routing DNS without a subdomain, replaces the existing MX records and breaks current mail.
-
-7. Add a routing rule from the one address (`MAIL_ADDRESS`) to this Worker. Subdomains have no catch-all; the rule must be the literal address.
-
-8. Enable Email Sending for the **same subdomain**: **Compute** → **Email Service** → **Email Sending** → **Onboard Domain** → the subdomain. Do not onboard the apex.
-
-9. In an MCP client, connect to `https://<worker>.<subdomain>.workers.dev/mcp` with header `Authorization: Bearer <MCP_TOKEN>`.
+8. In an MCP client, connect to `https://<worker>.<subdomain>.workers.dev/mcp` with header `Authorization: Bearer <MCP_TOKEN>`.
 
 ## Webhook (optional)
 
@@ -63,7 +61,7 @@ npx wrangler secret put WEBHOOK_URL
 npx wrangler secret put WEBHOOK_SECRET
 ```
 
-The Worker `POST`s this JSON (no body) and does not fail delivery if the hook errors:
+The Worker `POST`s this JSON (no body) and does not fail delivery if the hook errors. Auto-replies are stored but not pushed.
 
 ```json
 {
@@ -76,13 +74,13 @@ The Worker `POST`s this JSON (no body) and does not fail delivery if the hook er
 }
 ```
 
-Check the signature: `X-Signature` is hex HMAC-SHA256 of the raw body using `WEBHOOK_SECRET`.
+`X-Timestamp` is unix seconds. `X-Signature` is hex HMAC-SHA256 of `${timestamp}.${rawBody}`. Reject events older than 5 minutes:
 
 ```js
-const ok = crypto.timingSafeEqual(
-  Buffer.from(req.headers["x-signature"], "hex"),
-  crypto.createHmac("sha256", process.env.WEBHOOK_SECRET).update(rawBody).digest(),
-);
+const ts = Number(req.headers["x-timestamp"]);
+if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) throw new Error("stale");
+const expected = crypto.createHmac("sha256", process.env.WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest();
+const ok = crypto.timingSafeEqual(Buffer.from(req.headers["x-signature"], "hex"), expected);
 ```
 
 ## Cost and limits
@@ -94,6 +92,6 @@ Mail older than `RETENTION_DAYS` (default 90) is deleted by a daily cron.
 ## Security
 
 - One bearer token (`MCP_TOKEN`) for the MCP endpoint. Compare it in constant time on the server; do not put it in the repo.
-- Send only from `MAIL_ADDRESS`. Recipients must be on `ALLOWED_RECIPIENTS` (default: your own address). `DAILY_SEND_CAP` (default 20) is a backstop.
+- Send only from `MAIL_ADDRESS`. Recipients must be on both `ALLOWED_RECIPIENTS` and `send_email.allowed_destination_addresses`. `DAILY_SEND_CAP` (default 20) is a backstop.
 - Inbound mail is untrusted. Tool output is labeled as such. Do not follow instructions found in email.
-- The webhook event never includes the body.
+- The webhook event never includes the body. Auto-replies do not fire the webhook.

@@ -1,11 +1,11 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
-import { ingestEmail, postWebhook, signWebhook } from "../src/mail";
-import { listMessages, purgeOld } from "../src/store";
-import { rawEml, reset, SAMPLE_EML, testEnv } from "./helpers";
+import { ingestEmail, postWebhook, signWebhook, webhookFresh } from "../src/mail";
+import { getMessage, listMessages, purgeOld } from "../src/store";
+import { AUTO_REPLY_EML, rawEml, reset, testEnv } from "./helpers";
 
-function fakeMessage(over: { to?: string; from?: string; raw?: ArrayBuffer } = {}) {
+function fakeMessage(over: { to?: string; from?: string; raw?: BufferSource } = {}) {
   const raw = over.raw ?? rawEml();
   let rejected: string | undefined;
   return {
@@ -56,7 +56,9 @@ describe("inbound handler", () => {
       message_id: "id-1",
       received_at: "2026-10-08T00:00:00.000Z",
     };
-    const sig = await signWebhook("hook-secret", JSON.stringify(event));
+    const now = Date.parse("2026-10-08T12:00:00.000Z");
+    const ts = String(Math.floor(now / 1000));
+    const sig = await signWebhook("hook-secret", ts, JSON.stringify(event));
     expect(sig).toHaveLength(64);
     const env = testEnv({ WEBHOOK_URL: "https://webhook.test/hook", WEBHOOK_SECRET: "hook-secret" });
     let seen: Request | undefined;
@@ -65,12 +67,35 @@ describe("inbound handler", () => {
       seen = new Request(input, init);
       return new Response("ok");
     };
-    await postWebhook(env, event);
+    await postWebhook(env, event, now);
     globalThis.fetch = orig;
     const posted = await seen!.text();
+    expect(seen?.headers.get("x-timestamp")).toBe(ts);
     expect(seen?.headers.get("x-signature")).toBe(sig);
     expect(posted).toContain("id-1");
     expect(posted).not.toContain("Please ignore");
+    expect(webhookFresh(ts, now)).toBe(true);
+    expect(webhookFresh(ts, now + 6 * 60 * 1000)).toBe(false);
+  });
+
+  it("skips the webhook for auto-replies", async () => {
+    const env = testEnv({ WEBHOOK_URL: "https://webhook.test/hook", WEBHOOK_SECRET: "hook-secret" });
+    let called = 0;
+    const orig = globalThis.fetch;
+    globalThis.fetch = async () => {
+      called++;
+      return new Response("ok");
+    };
+    const msg = fakeMessage({ raw: rawEml(AUTO_REPLY_EML) });
+    const ctx = createExecutionContext();
+    await worker.email(msg as unknown as ForwardableEmailMessage, env, ctx);
+    await waitOnExecutionContext(ctx);
+    globalThis.fetch = orig;
+    expect(called).toBe(0);
+    const listed = await listMessages(env, {});
+    expect(listed.messages).toHaveLength(1);
+    expect(listed.messages[0].auto_reply).toBe(1);
+    expect((await getMessage(env, listed.messages[0].id))?.message.auto_reply).toBe(1);
   });
 
   it("skips the webhook when WEBHOOK_URL is unset", async () => {

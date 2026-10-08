@@ -1,3 +1,4 @@
+import { isAutoReplyEmail } from "agents/email";
 import PostalMime from "postal-mime";
 import {
   bodyText,
@@ -11,7 +12,7 @@ import {
 } from "./util";
 import { insertMessage, logSend, sentToday, type MessageRow } from "./store";
 
-export type IngestResult = { id: string } | { reject: string };
+export type IngestResult = { id: string; auto_reply: boolean } | { reject: string };
 
 export async function ingestEmail(
   env: Env,
@@ -19,6 +20,7 @@ export async function ingestEmail(
 ): Promise<IngestResult> {
   if (!isOurAddress(env, input.to)) return { reject: "Unknown recipient" };
   const parsed = await PostalMime.parse(input.raw);
+  const auto_reply = isAutoReplyEmail(parsed.headers ?? []);
   const id = crypto.randomUUID();
   const received_at = new Date().toISOString();
   const row: MessageRow = {
@@ -36,6 +38,7 @@ export async function ingestEmail(
     auth_results: input.authResults ?? null,
     received_at,
     read: 0,
+    auto_reply: auto_reply ? 1 : 0,
     raw_r2_key: `raw/${id}.eml`,
   };
   const files = (parsed.attachments ?? [])
@@ -47,7 +50,7 @@ export async function ingestEmail(
       content: typeof a.content === "string" ? new TextEncoder().encode(a.content) : a.content,
     }));
   await insertMessage(env, row, input.raw, files);
-  return { id };
+  return { id, auto_reply };
 }
 
 export type WebhookEvent = {
@@ -59,17 +62,27 @@ export type WebhookEvent = {
   received_at: string;
 };
 
-export async function signWebhook(secret: string, body: string) {
-  return hmacHex(secret, body);
+export async function signWebhook(secret: string, timestamp: string, body: string) {
+  return hmacHex(secret, `${timestamp}.${body}`);
 }
 
-export async function postWebhook(env: Env, event: WebhookEvent) {
+export function webhookFresh(timestamp: string, now = Date.now(), maxAgeSec = 300) {
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return false;
+  return Math.abs(now / 1000 - ts) <= maxAgeSec;
+}
+
+export async function postWebhook(env: Env, event: WebhookEvent, now = Date.now()) {
   const url = env.WEBHOOK_URL?.trim();
   if (!url) return;
   const body = JSON.stringify(event);
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const timestamp = String(Math.floor(now / 1000));
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-timestamp": timestamp,
+  };
   const secret = env.WEBHOOK_SECRET?.trim();
-  if (secret) headers["x-signature"] = await signWebhook(secret, body);
+  if (secret) headers["x-signature"] = await signWebhook(secret, timestamp, body);
   const res = await fetch(url, { method: "POST", headers, body });
   if (!res.ok) throw new Error(`webhook ${res.status}`);
 }

@@ -31,6 +31,18 @@ hi
 --bnd--
 `;
 
+export const AUTO_REPLY_EML = `From: Mailer <mailer@example.com>
+To: agent@mail.example.com
+Subject: Out of office
+Message-ID: <ooo@example.com>
+Date: Wed, 08 Oct 2026 12:00:00 +0000
+Auto-Submitted: auto-replied
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+I am away.
+`;
+
 export function rawEml(text = SAMPLE_EML) {
   return new TextEncoder().encode(text);
 }

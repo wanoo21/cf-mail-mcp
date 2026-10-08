@@ -107,6 +107,7 @@ export function createMailServer(env: Env, origin: string) {
           references: row.message.references_header,
           received_at: row.message.received_at,
           read: !!row.message.read,
+          auto_reply: !!row.message.auto_reply,
           auth_results: row.message.auth_results,
           text: row.message.text_body,
           attachments,
