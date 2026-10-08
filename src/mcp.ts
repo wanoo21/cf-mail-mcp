@@ -1,9 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
-import { deleteMessage, getAttachment, getMessage, listMessages, markRead } from "./store";
+import { deleteMessage, getAttachment, getMessage, listMessages, markRead, sentToday } from "./store";
 import { replyTo, sendMail } from "./mail";
-import { equalHex, hmacHex, untrusted } from "./util";
+import { dailySendCap, equalHex, hmacHex, recipientPolicy, retentionDays, sendFrom, untrusted } from "./util";
 
 const ATT_TTL_MS = 15 * 60 * 1000;
 const SMALL = 128 * 1024;
@@ -45,8 +45,32 @@ export async function serveAttachment(request: Request, env: Env) {
   });
 }
 
+export async function mailboxStatus(env: Env) {
+  const cap = dailySendCap(env);
+  const used = await sentToday(env);
+  return {
+    address: sendFrom(env),
+    recipients: recipientPolicy(env),
+    daily_cap: cap,
+    sends_today: used,
+    sends_left: Math.max(0, cap - used),
+    retention_days: retentionDays(env),
+    webhook: !!env.WEBHOOK_URL,
+  };
+}
+
 export function createMailServer(env: Env, origin: string) {
   const server = new McpServer({ name: "mail-mcp", version: "1.0.0" });
+
+  server.registerTool(
+    "status",
+    {
+      description:
+        "Read-only mailbox config: address, recipient policy, daily send budget, retention, webhook on or off.",
+      inputSchema: {},
+    },
+    async () => ok(await mailboxStatus(env)),
+  );
 
   server.registerTool(
     "list_messages",

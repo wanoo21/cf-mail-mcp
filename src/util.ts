@@ -25,6 +25,15 @@ export function allowedRecipients(env: Env) {
     .filter(Boolean);
 }
 
+export function recipientPolicy(env: Env) {
+  const rules = allowedRecipients(env);
+  if (rules.includes("*")) return { mode: "*" as const, rules };
+  const domains = rules.filter((r) => r.startsWith("@") || r.startsWith("*@"));
+  if (domains.length && domains.length === rules.length) return { mode: "domains" as const, rules };
+  if (domains.length) return { mode: "mixed" as const, rules };
+  return { mode: "exact" as const, rules };
+}
+
 export function canSendTo(env: Env, to: string) {
   const dest = norm(to);
   const rules = allowedRecipients(env);

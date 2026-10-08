@@ -1,6 +1,12 @@
 # cf-mail-mcp
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wanoo21/cf-mail-mcp)
+
+[Set up with an AI agent](SETUP_PROMPT.md)
+
 A Cloudflare Worker that gives one AI agent an email address on your domain. Incoming mail is stored in D1 and R2; the agent reads and sends through a remote MCP server over streamable HTTP.
+
+The deploy button creates the Worker, D1, and R2 and prompts for `MCP_TOKEN` and the mailbox vars. It does **not** onboard Email Routing or Email Sending, and it will not add MX. After the Worker is up, enable Routing on the apex (never if that apex already has other MX), enable Sending for the mailbox domain, then create the inbound rule (`addresses` on the next deploy, or `wrangler email routing rules create`).
 
 ## Prerequisites
 
@@ -9,7 +15,7 @@ A Cloudflare Worker that gives one AI agent an email address on your domain. Inc
 
 ## Setup
 
-1. Clone and install:
+1. Clone and install (skip if you used the button):
 
    ```bash
    git clone https://github.com/wanoo21/cf-mail-mcp
@@ -17,24 +23,23 @@ A Cloudflare Worker that gives one AI agent an email address on your domain. Inc
    npm install
    ```
 
-2. Create D1 and R2:
+2. Edit `wrangler.jsonc`: D1 id (or leave the placeholder and let Wrangler provision), `MAIL_ADDRESS`, `addresses` (same literal address), and `allowed_sender_addresses` (same as `MAIL_ADDRESS`). `ALLOWED_RECIPIENTS` takes exact addresses, `@domain` / `*@domain`, or `*`. Remove `allowed_destination_addresses` unless every entry is exact.
 
    ```bash
-   npx wrangler d1 create mail-mcp
-   npx wrangler r2 bucket create mail-mcp
-   ```
-
-3. Copy the example config and fill in the D1 id, `MAIL_ADDRESS`, `addresses` (same address), `ALLOWED_RECIPIENTS`, and `allowed_sender_addresses`. `allowed_sender_addresses` and `addresses` must match `MAIL_ADDRESS`. `ALLOWED_RECIPIENTS` accepts `you@x.com`, `@example.com` / `*@example.com` (exact domain, no subdomains), or `*` for anyone. Remove `allowed_destination_addresses` unless every entry is an exact address.
-
-   ```bash
-   cp wrangler.example.jsonc wrangler.jsonc
    cp .dev.vars.example .dev.vars
    ```
 
-4. Set secrets (generate a long random `MCP_TOKEN`):
+3. Check the token and domain. Read-only; it never changes DNS.
+
+   ```bash
+   npm run check-setup
+   ```
+
+4. Generate a long random `MCP_TOKEN` and deploy. `npm run deploy` applies D1 migrations then deploys.
 
    ```bash
    npx wrangler secret put MCP_TOKEN
+   npm run deploy
    ```
 
 5. In the Cloudflare dashboard, open the zone → **Compute** → **Email Service** → **Email Routing**. Select the **apex** zone, then **Settings** → **Subdomains**, and add the mail subdomain (for example `mail`).
@@ -43,14 +48,19 @@ A Cloudflare Worker that gives one AI agent an email address on your domain. Inc
 
 6. Enable Email Sending for the **same subdomain**: **Compute** → **Email Service** → **Email Sending** → **Onboard Domain** → the subdomain. Do not onboard the apex.
 
-7. Deploy. Wrangler creates the routing rule from `addresses` (Wrangler 4.113+). Subdomains have no catch-all, so list the literal address.
+7. If deploy did not create the routing rule, add the literal address:
 
    ```bash
-   npx wrangler d1 migrations apply mail-mcp --remote
-   npx wrangler deploy
+   npx wrangler email routing rules create <domain> --match-type literal --match-field to --match-value <addr> --action-type worker --action-value mail-mcp
    ```
 
 8. In an MCP client, connect to `https://<worker>.<subdomain>.workers.dev/mcp` with header `Authorization: Bearer <MCP_TOKEN>`.
+
+## MCP tools
+
+`status` (read-only), `list_messages`, `read_message`, `send_message`, `reply_to_message`, `mark_read`, `delete_message`.
+
+`status` returns the mailbox address, recipient policy (exact, domains, or `*`), daily cap and sends left today, retention days, and whether a webhook is configured (`true`/`false` only).
 
 ## Webhook (optional)
 
