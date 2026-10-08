@@ -25,7 +25,7 @@
     {
       "binding": "DB",
       "database_name": "mail-mcp",
-      "database_id": "PASTE_D1_ID",
+      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations",
     },
   ],
@@ -38,7 +38,7 @@
   "send_email": [
     {
       "name": "EMAIL",
-      // Must match MAIL_ADDRESS. Add more entries here if you later accept more than one address.
+      // Must match MAIL_ADDRESS.
       "allowed_sender_addresses": ["agent@mail.example.com"],
       // Exact addresses only. Drop this field for * or @domain / *@domain.
       "allowed_destination_addresses": ["you@example.com"],

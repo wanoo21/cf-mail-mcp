@@ -2,6 +2,8 @@
 
 Paste the block below into an agent that has a shell and your Cloudflare API token in `CLOUDFLARE_API_TOKEN`. Do not paste the token into the chat.
 
+There is also a [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/wanoo21/cf-mail-mcp) button in the README. It provisions the Worker, D1, and R2 only. Routing, Sending, and the inbound rule stay manual.
+
 ---
 
 Deploy https://github.com/wanoo21/cf-mail-mcp. One Cloudflare Worker, one mailbox, MCP at `/mcp`.
@@ -26,7 +28,19 @@ Node 22+. wrangler 4.113+ (this repo pins ^4.148).
 git clone https://github.com/wanoo21/cf-mail-mcp
 cd cf-mail-mcp
 npm install
+npx wrangler d1 create mail-mcp
+npx wrangler r2 bucket create mail-mcp
 ```
+
+Skip create if the deploy button already provisioned them.
+
+Fill `wrangler.jsonc`: `database_id`, `MAIL_ADDRESS`, `addresses` (same literal address), `allowed_sender_addresses` (same). `ALLOWED_RECIPIENTS` takes exact addresses, `@domain` / `*@domain`, or `*`. Remove `allowed_destination_addresses` unless every entry is exact.
+
+```
+npm run check-setup
+```
+
+That command is read-only. Fix every fail before touching DNS.
 
 Confirm, then enable sending (this writes SPF/DKIM):
 
@@ -34,22 +48,10 @@ Confirm, then enable sending (this writes SPF/DKIM):
 npx wrangler email sending enable <domain>
 ```
 
-```
-npx wrangler d1 create mail-mcp
-npx wrangler r2 bucket create mail-mcp
-cp wrangler.example.jsonc wrangler.jsonc
-```
-
-Fill `database_id`, `MAIL_ADDRESS`, `addresses` (same literal address), `allowed_sender_addresses` (same). Set `ALLOWED_RECIPIENTS` and `allowed_destination_addresses` to the same exact recipients.
+Write a long random `MCP_TOKEN` into a secrets file without echoing it. `npm run deploy` applies migrations, then deploys. Delete the secrets file after:
 
 ```
-npx wrangler d1 migrations apply mail-mcp --remote
-```
-
-Write a long random `MCP_TOKEN` into a secrets file without echoing it. Deploy with that file, then delete it:
-
-```
-npx wrangler deploy --secrets-file <secrets-file>
+npm run deploy -- --secrets-file <secrets-file>
 ```
 
 4. If the deploy-time `addresses` step fails on permissions, create the literal rule yourself:
@@ -61,8 +63,9 @@ npx wrangler email routing rules create <domain> --match-type literal --match-fi
 5. Verify
 
 - `GET /mcp` with no `Authorization` → 401
-- initialize, then `tools/list`, with `Authorization: Bearer <token>` → the six tools
+- initialize, then `tools/list`, with `Authorization: Bearer <token>` → the tools including `status`
 - send a real test email to the address; `list_messages` shows it
+- `status` shows the mailbox, recipient policy, sends left, and `webhook: false` unless you set a hook
 
 6. Optional webhook: add `WEBHOOK_URL` plus `WEBHOOK_BEARER` and/or `WEBHOOK_SECRET` to the secrets file and redeploy with `--secrets-file`. Do not print them.
 

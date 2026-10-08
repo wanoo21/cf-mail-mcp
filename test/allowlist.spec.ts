@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ingestEmail, replyTo, sendMail } from "../src/mail";
-import { canSendTo, isOurAddress } from "../src/util";
+import { canSendTo, isOurAddress, recipientPolicy } from "../src/util";
 import { getMessage, logSend } from "../src/store";
 import { rawEml, reset, testEnv } from "./helpers";
 
@@ -21,6 +21,12 @@ describe("allowlist and cap", () => {
       raw: rawEml(),
     });
     expect(r).toEqual({ reject: "Unknown recipient" });
+  });
+
+  it("classifies recipient policy", () => {
+    expect(recipientPolicy(testEnv()).mode).toBe("exact");
+    expect(recipientPolicy(testEnv({ ALLOWED_RECIPIENTS: "*" })).mode).toBe("*");
+    expect(recipientPolicy(testEnv({ ALLOWED_RECIPIENTS: "@example.com" })).mode).toBe("domains");
   });
 
   it("only sends to allowlisted recipients", async () => {

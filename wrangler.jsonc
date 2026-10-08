@@ -10,6 +10,7 @@
   "triggers": {
     "crons": ["0 3 * * *"],
   },
+  // Literal inbound address. Subdomains have no catch-all. Deploy creates the routing rule (Wrangler 4.113+).
   "addresses": ["agent@mail.example.com"],
   "vars": {
     "MAIL_ADDRESS": "agent@mail.example.com",

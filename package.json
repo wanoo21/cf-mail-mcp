@@ -9,8 +9,37 @@
   "scripts": {
     "dev": "wrangler dev",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "deploy": "wrangler deploy"
+    "test": "vitest run && node --test scripts/check-setup.test.mjs",
+    "check-setup": "node scripts/check-setup.mjs",
+    "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy"
+  },
+  "cloudflare": {
+    "bindings": {
+      "MCP_TOKEN": {
+        "description": "Long random bearer token for `/mcp`. Generate with `openssl rand -hex 32`."
+      },
+      "WEBHOOK_URL": {
+        "description": "Optional. HTTPS URL to POST when mail arrives."
+      },
+      "WEBHOOK_SECRET": {
+        "description": "Optional. HMAC secret for the inbound webhook."
+      },
+      "WEBHOOK_BEARER": {
+        "description": "Optional. Bearer token the webhook receiver expects."
+      },
+      "MAIL_ADDRESS": {
+        "description": "Mailbox this Worker owns, e.g. `agent@mail.example.com`."
+      },
+      "ALLOWED_RECIPIENTS": {
+        "description": "Exact addresses, `@domain` / `*@domain`, or `*`. Remove `allowed_destination_addresses` unless every entry is exact."
+      },
+      "DB": {
+        "description": "D1 database for message metadata."
+      },
+      "R2": {
+        "description": "R2 bucket for raw mail and attachments."
+      }
+    }
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
