@@ -43,7 +43,7 @@ describe("allowlist and cap", () => {
   });
 
   it("threads replies with In-Reply-To and References", async () => {
-    const env = testEnv();
+    const env = testEnv({ ALLOWED_RECIPIENTS: "alice@example.com" });
     const sent: unknown[] = [];
     env.EMAIL = {
       async send(msg) {
@@ -62,7 +62,7 @@ describe("allowlist and cap", () => {
       subject: "Re: Hello there",
       text: "thanks",
       headers: {
-        "In-Reply-To": "abc@example.com",
+        "In-Reply-To": "<abc@example.com>",
         References: "<root@example.com> <prev@example.com> <abc@example.com>",
       },
     });

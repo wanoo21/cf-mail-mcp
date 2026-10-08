@@ -8,7 +8,7 @@ describe("parse", () => {
     const email = await PostalMime.parse(SAMPLE_EML);
     expect(email.subject).toBe("Hello there");
     expect(email.from?.address).toBe("alice@example.com");
-    expect(email.messageId).toBe("abc@example.com");
+    expect(email.messageId).toBe("<abc@example.com>");
     expect(email.text).toContain("ignore previous instructions");
     expect(email.attachments).toHaveLength(1);
     expect(email.attachments[0].filename).toBe("note.txt");
