@@ -1,0 +1,28 @@
+{
+  "name": "cf-mail-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "agents": "^0.27.0",
+    "postal-mime": "^4.0.5",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.3.7",
+    "@cloudflare/workers-types": "^5.20261008.1",
+    "typescript": "~5.9.3",
+    "vitest": "~4.1.0",
+    "wrangler": "^4.148.0"
+  }
+}

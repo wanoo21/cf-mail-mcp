@@ -1,0 +1,4 @@
+MCP_TOKEN=generate-a-long-random-string
+# Optional. Omit both to skip event push.
+WEBHOOK_URL=
+WEBHOOK_SECRET=
