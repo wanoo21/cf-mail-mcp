@@ -1,5 +1,7 @@
 # cf-mail-mcp
 
+[Set up with an AI agent](SETUP_PROMPT.md)
+
 A Cloudflare Worker that gives one AI agent an email address on your domain. Incoming mail is stored in D1 and R2; the agent reads and sends through a remote MCP server over streamable HTTP.
 
 ## Prerequisites
