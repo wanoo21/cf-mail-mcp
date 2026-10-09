@@ -82,6 +82,85 @@ describe("allowlist and cap", () => {
     expect(r).toEqual({ error: "daily send cap reached (2)" });
   });
 
+  it("sends from a chosen mailbox address", async () => {
+    const env = testEnv({ MAIL_ADDRESS: "agent@mail.example.com,other@mail.example.com" });
+    const sent: { from?: string }[] = [];
+    env.EMAIL = {
+      async send(msg) {
+        sent.push(msg);
+        return { messageId: "out-from" };
+      },
+    };
+    expect(await sendMail(env, { to: "owner@example.com", from: "Other@mail.example.com", subject: "x", text: "hi" })).toEqual({
+      messageId: "out-from",
+    });
+    expect(sent[0]?.from).toBe("other@mail.example.com");
+    expect(await sendMail(env, { to: "owner@example.com", from: "nope@mail.example.com", subject: "x", text: "hi" })).toEqual({
+      error: "from is not a mailbox address",
+    });
+    expect("messageId" in (await sendMail(env, { to: "owner@example.com", subject: "x", text: "hi" }))).toBe(true);
+    expect(sent[1]?.from).toBe("agent@mail.example.com");
+  });
+
+  it("replies from the address the message was delivered to", async () => {
+    const env = testEnv({
+      MAIL_ADDRESS: "agent@mail.example.com,other@mail.example.com",
+      ALLOWED_RECIPIENTS: "alice@example.com",
+    });
+    const sent: { from?: string }[] = [];
+    env.EMAIL = {
+      async send(msg) {
+        sent.push(msg);
+        return { messageId: "out-reply" };
+      },
+    };
+    const r = await ingestEmail(env, { from: "alice@example.com", to: "Other@mail.example.com", raw: rawEml() });
+    if (!("id" in r)) throw new Error("ingest");
+    const out = await replyTo(env, (await getMessage(env, r.id))!.message, "thanks");
+    expect(out).toEqual({ messageId: "out-reply" });
+    expect(sent[0]?.from).toBe("other@mail.example.com");
+  });
+
+  it("replies from the default when the stored address is not ours", async () => {
+    const env = testEnv({
+      MAIL_ADDRESS: "agent@mail.example.com,other@mail.example.com",
+      ALLOWED_RECIPIENTS: "alice@example.com",
+    });
+    const sent: { from?: string }[] = [];
+    env.EMAIL = {
+      async send(msg) {
+        sent.push(msg);
+        return { messageId: "out-default" };
+      },
+    };
+    await replyTo(
+      env,
+      {
+        address: "gone@mail.example.com",
+        to_addr: "gone@mail.example.com",
+        from_addr: "alice@example.com",
+        subject: "Hello",
+        rfc_message_id: null,
+        references_header: null,
+      },
+      "thanks",
+    );
+    expect(sent[0]?.from).toBe("agent@mail.example.com");
+    await replyTo(
+      env,
+      {
+        address: "gone@mail.example.com",
+        to_addr: "other@mail.example.com",
+        from_addr: "alice@example.com",
+        subject: "Hello",
+        rfc_message_id: null,
+        references_header: null,
+      },
+      "thanks",
+    );
+    expect(sent[1]?.from).toBe("other@mail.example.com");
+  });
+
   it("threads replies with In-Reply-To and References", async () => {
     const env = testEnv({ ALLOWED_RECIPIENTS: "alice@example.com" });
     const sent: unknown[] = [];
