@@ -36,6 +36,7 @@ export default {
       message.setReject(result.reject);
       return;
     }
+    if ("duplicate" in result) return;
     const stored = await env.DB.prepare("SELECT address, from_addr, subject, received_at FROM messages WHERE id = ?")
       .bind(result.id)
       .first<{ address: string; from_addr: string; subject: string; received_at: string }>();

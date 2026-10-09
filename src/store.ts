@@ -39,23 +39,10 @@ export async function insertMessage(
   raw: BufferSource,
   files: { id: string; filename: string; content_type: string; content: BufferSource }[],
 ) {
-  if (row.raw_r2_key) await env.R2.put(row.raw_r2_key, raw);
-  const atts: AttachmentRow[] = [];
-  for (const f of files) {
-    const r2_key = `att/${row.id}/${f.id}/${f.filename}`;
-    await env.R2.put(r2_key, f.content);
-    atts.push({
-      id: f.id,
-      message_id: row.id,
-      filename: f.filename,
-      content_type: f.content_type,
-      size: f.content.byteLength,
-      r2_key,
-    });
-  }
-  await env.DB.prepare(
+  const inserted = await env.DB.prepare(
     `INSERT INTO messages (id, address, from_addr, to_addr, subject, rfc_message_id, in_reply_to, references_header, text_body, auth_results, received_at, read, auto_reply, raw_r2_key)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+     ON CONFLICT(address, rfc_message_id) WHERE rfc_message_id IS NOT NULL DO NOTHING`,
   )
     .bind(
       row.id,
@@ -73,14 +60,18 @@ export async function insertMessage(
       row.raw_r2_key,
     )
     .run();
-  for (const a of atts) {
+  if (!inserted.meta.changes) return false;
+  if (row.raw_r2_key) await env.R2.put(row.raw_r2_key, raw);
+  for (const f of files) {
+    const r2_key = `att/${row.id}/${f.id}/${f.filename}`;
+    await env.R2.put(r2_key, f.content);
     await env.DB.prepare(
       `INSERT INTO attachments (id, message_id, filename, content_type, size, r2_key) VALUES (?, ?, ?, ?, ?, ?)`,
     )
-      .bind(a.id, a.message_id, a.filename, a.content_type, a.size, a.r2_key)
+      .bind(f.id, row.id, f.filename, f.content_type, f.content.byteLength, r2_key)
       .run();
   }
-  return atts;
+  return true;
 }
 
 export function parseCursor(cursor?: string) {
