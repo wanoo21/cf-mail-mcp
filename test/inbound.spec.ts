@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { ingestEmail, postWebhook, signWebhook, webhookFresh } from "../src/mail";
 import { getMessage, listMessages, purgeOld } from "../src/store";
-import { AUTO_REPLY_EML, rawEml, reset, testEnv } from "./helpers";
+import { AUTO_REPLY_EML, rawEml, reset, SAMPLE_EML, testEnv } from "./helpers";
 
 function fakeMessage(over: { to?: string; from?: string; raw?: BufferSource } = {}) {
   const raw = over.raw ?? rawEml();
@@ -146,6 +146,45 @@ describe("inbound handler", () => {
     });
     globalThis.fetch = orig;
     expect(called).toBe(0);
+  });
+
+  it("does not store or webhook a second delivery", async () => {
+    const env = testEnv({ WEBHOOK_URL: "https://webhook.test/hook", WEBHOOK_SECRET: "hook-secret" });
+    let called = 0;
+    const orig = globalThis.fetch;
+    globalThis.fetch = async () => {
+      called++;
+      return new Response("ok");
+    };
+    const first = fakeMessage();
+    const second = fakeMessage();
+    const ctx1 = createExecutionContext();
+    await worker.email(first as unknown as ForwardableEmailMessage, env, ctx1);
+    await waitOnExecutionContext(ctx1);
+    const ctx2 = createExecutionContext();
+    await worker.email(second as unknown as ForwardableEmailMessage, env, ctx2);
+    await waitOnExecutionContext(ctx2);
+    globalThis.fetch = orig;
+    expect(called).toBe(1);
+    expect(second.rejected).toBeUndefined();
+    expect((await listMessages(env, {})).messages).toHaveLength(1);
+  });
+
+  it("accepts one of two racing deliveries", async () => {
+    const env = testEnv();
+    const eml = SAMPLE_EML.replace("Message-ID: <abc@example.com>", "Message-ID: <race@example.com>");
+    const input = { from: "alice@example.com", to: "agent@mail.example.com" };
+    const before = new Set((await env.R2.list()).objects.map((o) => o.key));
+    const results = await Promise.all([
+      ingestEmail(env, { ...input, raw: rawEml(eml) }),
+      ingestEmail(env, { ...input, raw: rawEml(eml) }),
+    ]);
+    expect(results.filter((r) => "id" in r)).toHaveLength(1);
+    expect(results.filter((r) => "duplicate" in r)).toHaveLength(1);
+    expect((await listMessages(env, {})).messages).toHaveLength(1);
+    const added = (await env.R2.list()).objects.map((o) => o.key).filter((k) => !before.has(k));
+    expect(added.filter((k) => k.startsWith("raw/"))).toHaveLength(1);
+    expect(added.filter((k) => k.startsWith("att/"))).toHaveLength(1);
   });
 
   it("runs retention from scheduled", async () => {

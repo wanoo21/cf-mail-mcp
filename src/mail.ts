@@ -12,7 +12,7 @@ import {
 } from "./util";
 import { insertMessage, logSend, sentToday, type MessageRow } from "./store";
 
-export type IngestResult = { id: string; auto_reply: boolean } | { reject: string };
+export type IngestResult = { id: string; auto_reply: boolean } | { duplicate: true } | { reject: string };
 
 export async function ingestEmail(
   env: Env,
@@ -29,7 +29,7 @@ export async function ingestEmail(
     from_addr: parsed.from?.address ?? input.from,
     to_addr: input.to,
     subject: parsed.subject ?? "",
-    rfc_message_id: parsed.messageId ?? null,
+    rfc_message_id: parsed.messageId || null,
     in_reply_to: parsed.inReplyTo ?? null,
     references_header: Array.isArray(parsed.references)
       ? parsed.references.join(" ")
@@ -49,7 +49,7 @@ export async function ingestEmail(
       content_type: a.mimeType || "application/octet-stream",
       content: typeof a.content === "string" ? new TextEncoder().encode(a.content) : a.content,
     }));
-  await insertMessage(env, row, input.raw, files);
+  if (!(await insertMessage(env, row, input.raw, files))) return { duplicate: true };
   return { id, auto_reply };
 }
 
