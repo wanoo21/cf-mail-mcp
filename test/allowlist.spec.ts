@@ -84,7 +84,7 @@ describe("allowlist and cap", () => {
 
   it("sends from a chosen mailbox address", async () => {
     const env = testEnv({ MAIL_ADDRESS: "agent@mail.example.com,other@mail.example.com" });
-    const sent: { from?: string }[] = [];
+    const sent: unknown[] = [];
     env.EMAIL = {
       async send(msg) {
         sent.push(msg);
@@ -94,12 +94,12 @@ describe("allowlist and cap", () => {
     expect(await sendMail(env, { to: "owner@example.com", from: "Other@mail.example.com", subject: "x", text: "hi" })).toEqual({
       messageId: "out-from",
     });
-    expect(sent[0]?.from).toBe("other@mail.example.com");
+    expect(sent[0]).toMatchObject({ from: "other@mail.example.com" });
     expect(await sendMail(env, { to: "owner@example.com", from: "nope@mail.example.com", subject: "x", text: "hi" })).toEqual({
       error: "from is not a mailbox address",
     });
     expect("messageId" in (await sendMail(env, { to: "owner@example.com", subject: "x", text: "hi" }))).toBe(true);
-    expect(sent[1]?.from).toBe("agent@mail.example.com");
+    expect(sent[1]).toMatchObject({ from: "agent@mail.example.com" });
   });
 
   it("replies from the address the message was delivered to", async () => {
@@ -107,7 +107,7 @@ describe("allowlist and cap", () => {
       MAIL_ADDRESS: "agent@mail.example.com,other@mail.example.com",
       ALLOWED_RECIPIENTS: "alice@example.com",
     });
-    const sent: { from?: string }[] = [];
+    const sent: unknown[] = [];
     env.EMAIL = {
       async send(msg) {
         sent.push(msg);
@@ -118,7 +118,7 @@ describe("allowlist and cap", () => {
     if (!("id" in r)) throw new Error("ingest");
     const out = await replyTo(env, (await getMessage(env, r.id))!.message, "thanks");
     expect(out).toEqual({ messageId: "out-reply" });
-    expect(sent[0]?.from).toBe("other@mail.example.com");
+    expect(sent[0]).toMatchObject({ from: "other@mail.example.com" });
   });
 
   it("replies from the default when the stored address is not ours", async () => {
@@ -126,7 +126,7 @@ describe("allowlist and cap", () => {
       MAIL_ADDRESS: "agent@mail.example.com,other@mail.example.com",
       ALLOWED_RECIPIENTS: "alice@example.com",
     });
-    const sent: { from?: string }[] = [];
+    const sent: unknown[] = [];
     env.EMAIL = {
       async send(msg) {
         sent.push(msg);
@@ -145,7 +145,7 @@ describe("allowlist and cap", () => {
       },
       "thanks",
     );
-    expect(sent[0]?.from).toBe("agent@mail.example.com");
+    expect(sent[0]).toMatchObject({ from: "agent@mail.example.com" });
     await replyTo(
       env,
       {
@@ -158,7 +158,7 @@ describe("allowlist and cap", () => {
       },
       "thanks",
     );
-    expect(sent[1]?.from).toBe("other@mail.example.com");
+    expect(sent[1]).toMatchObject({ from: "other@mail.example.com" });
   });
 
   it("threads replies with In-Reply-To and References", async () => {
