@@ -25,7 +25,7 @@ The deploy button creates the Worker, D1, and R2 and prompts for `MCP_TOKEN` and
    npm install
    ```
 
-2. Edit `wrangler.jsonc`: D1 id (or leave the placeholder and let Wrangler provision), `MAIL_ADDRESS`, `addresses` (same literal address), and `allowed_sender_addresses` (same as `MAIL_ADDRESS`). `ALLOWED_RECIPIENTS` takes exact addresses, `@domain` / `*@domain`, or `*`. Remove `allowed_destination_addresses` unless every entry is exact.
+2. Edit `wrangler.jsonc`: D1 id (or leave the placeholder and let Wrangler provision), `MAIL_ADDRESS` (comma-separated), `addresses`, and `send_email.allowed_sender_addresses`. Every address in `MAIL_ADDRESS` must also be in `addresses` and in `send_email.allowed_sender_addresses`. `ALLOWED_RECIPIENTS` takes exact addresses, `@domain` / `*@domain`, or `*`. Remove `allowed_destination_addresses` unless every entry is exact.
 
    ```bash
    cp .dev.vars.example .dev.vars
@@ -62,7 +62,7 @@ The deploy button creates the Worker, D1, and R2 and prompts for `MCP_TOKEN` and
 
 `status` (read-only), `list_messages`, `read_message`, `send_message`, `reply_to_message`, `mark_read`, `delete_message`.
 
-`status` returns the mailbox address, recipient policy (exact, domains, or `*`), daily cap and sends left today, retention days, and whether a webhook is configured (`true`/`false` only).
+`status` returns every mailbox address, recipient policy (exact, domains, or `*`), daily cap and sends left today, retention days, and whether a webhook is configured (`true`/`false` only).
 
 ## Webhook (optional)
 

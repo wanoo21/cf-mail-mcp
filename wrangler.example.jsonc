@@ -10,10 +10,12 @@
   "triggers": {
     "crons": ["0 3 * * *"],
   },
-  // Creates the Email Routing rule on deploy (Wrangler 4.113+). Literal address only; subdomains have no catch-all.
+  // Creates the Email Routing rule on deploy (Wrangler 4.113+). Literal addresses only; subdomains have no catch-all.
+  // Every MAIL_ADDRESS entry must be listed here.
   "addresses": ["agent@mail.example.com"],
   "vars": {
-    // One mailbox for this deployment. Sending always uses this address.
+    // Comma-separated. Default send-from is the first.
+    // Every address must also be in `addresses` and send_email.allowed_sender_addresses.
     "MAIL_ADDRESS": "agent@mail.example.com",
     // Comma-separated exact addresses, @domain / *@domain, or * for anyone.
     // If any entry is not an exact address, remove send_email.allowed_destination_addresses.
@@ -38,7 +40,7 @@
   "send_email": [
     {
       "name": "EMAIL",
-      // Must match MAIL_ADDRESS.
+      // Every MAIL_ADDRESS entry must be listed here.
       "allowed_sender_addresses": ["agent@mail.example.com"],
       // Exact addresses only. Drop this field for * or @domain / *@domain.
       "allowed_destination_addresses": ["you@example.com"],

@@ -3,7 +3,7 @@ import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 import { deleteMessage, getAttachment, getMessage, listMessages, markRead, sentToday } from "./store";
 import { replyTo, sendMail } from "./mail";
-import { dailySendCap, equalHex, hmacHex, recipientPolicy, retentionDays, sendFrom, untrusted } from "./util";
+import { dailySendCap, equalHex, hmacHex, ourAddresses, recipientPolicy, retentionDays, untrusted } from "./util";
 
 const ATT_TTL_MS = 15 * 60 * 1000;
 const SMALL = 128 * 1024;
@@ -49,7 +49,7 @@ export async function mailboxStatus(env: Env) {
   const cap = dailySendCap(env);
   const used = await sentToday(env);
   return {
-    address: sendFrom(env),
+    addresses: ourAddresses(env),
     recipients: recipientPolicy(env),
     daily_cap: cap,
     sends_today: used,
@@ -66,7 +66,7 @@ export function createMailServer(env: Env, origin: string) {
     "status",
     {
       description:
-        "Read-only mailbox config: address, recipient policy, daily send budget, retention, webhook on or off.",
+        "Read-only mailbox config: mailbox addresses, recipient policy, daily send budget, retention, webhook on or off.",
       inputSchema: {},
     },
     async () => ok(await mailboxStatus(env)),
@@ -143,9 +143,10 @@ export function createMailServer(env: Env, origin: string) {
   server.registerTool(
     "send_message",
     {
-      description: "Send from the configured mailbox address. Recipients must match ALLOWED_RECIPIENTS (exact address, @domain / *@domain, or *). Daily cap applies.",
+      description: "Send from a MAIL_ADDRESS. Optional from must be one of them; default is the first. Recipients must match ALLOWED_RECIPIENTS (exact address, @domain / *@domain, or *). Daily cap applies.",
       inputSchema: {
         to: z.union([z.string(), z.array(z.string())]),
+        from: z.string().optional(),
         subject: z.string(),
         text: z.string(),
         html: z.string().optional(),
@@ -169,7 +170,7 @@ export function createMailServer(env: Env, origin: string) {
   server.registerTool(
     "reply_to_message",
     {
-      description: "Reply to a stored message. Sets In-Reply-To and References. Recipient must match ALLOWED_RECIPIENTS (exact address, @domain / *@domain, or *).",
+      description: "Reply from the address the message was delivered to, if it is ours; otherwise the default. Sets In-Reply-To and References. Recipient must match ALLOWED_RECIPIENTS (exact address, @domain / *@domain, or *).",
       inputSchema: {
         id: z.string(),
         text: z.string(),

@@ -50,7 +50,7 @@ describe("tools", () => {
     await logSend(env);
     const s = await mailboxStatus(env);
     expect(s).toEqual({
-      address: "agent@mail.example.com",
+      addresses: ["agent@mail.example.com"],
       recipients: { mode: "exact", rules: ["owner@example.com"] },
       daily_cap: 5,
       sends_today: 2,
@@ -59,6 +59,11 @@ describe("tools", () => {
       webhook: true,
     });
     expect(JSON.stringify(s)).not.toContain("https://hook.example");
+  });
+
+  it("lists every mailbox address", async () => {
+    const s = await mailboxStatus(testEnv({ MAIL_ADDRESS: "agent@mail.example.com, other@mail.example.com" }));
+    expect(s.addresses).toEqual(["agent@mail.example.com", "other@mail.example.com"]);
   });
 
   it("classifies recipient policy", async () => {

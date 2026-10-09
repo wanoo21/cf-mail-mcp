@@ -6,6 +6,7 @@ import {
   dailySendCap,
   hmacHex,
   isOurAddress,
+  norm,
   replySubject,
   sendFrom,
   threadReferences,
@@ -94,6 +95,7 @@ export type SendInput = {
   subject: string;
   text: string;
   html?: string;
+  from?: string;
   headers?: Record<string, string>;
   attachments?: { filename: string; type: string; content_base64: string }[];
 };
@@ -103,8 +105,10 @@ export async function sendMail(
   input: SendInput,
   now = Date.now(),
 ): Promise<{ messageId: string } | { error: string }> {
-  const from = sendFrom(env);
+  const requested = input.from?.trim();
+  const from = requested ? norm(requested) : sendFrom(env);
   if (!from) return { error: "MAIL_ADDRESS is not set" };
+  if (requested && !isOurAddress(env, from)) return { error: "from is not a mailbox address" };
   const recipients = (Array.isArray(input.to) ? input.to : [input.to]).map((t) => t.trim()).filter(Boolean);
   if (!recipients.length) return { error: "to is required" };
   if (recipients.length > 50) return { error: "max 50 recipients" };
@@ -139,7 +143,7 @@ export async function sendMail(
 
 export async function replyTo(
   env: Env,
-  original: Pick<MessageRow, "from_addr" | "subject" | "rfc_message_id" | "references_header">,
+  original: Pick<MessageRow, "address" | "to_addr" | "from_addr" | "subject" | "rfc_message_id" | "references_header">,
   text: string,
   html?: string,
   now = Date.now(),
@@ -150,10 +154,12 @@ export async function replyTo(
     const refs = threadReferences(original.references_header, original.rfc_message_id);
     if (refs) headers.References = refs;
   }
+  const delivered = [original.address, original.to_addr].find((a) => isOurAddress(env, a));
   return sendMail(
     env,
     {
       to: original.from_addr,
+      from: delivered,
       subject: replySubject(original.subject),
       text,
       html,
