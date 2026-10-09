@@ -174,6 +174,7 @@ describe("inbound handler", () => {
     const env = testEnv();
     const eml = SAMPLE_EML.replace("Message-ID: <abc@example.com>", "Message-ID: <race@example.com>");
     const input = { from: "alice@example.com", to: "agent@mail.example.com" };
+    const before = new Set((await env.R2.list()).objects.map((o) => o.key));
     const results = await Promise.all([
       ingestEmail(env, { ...input, raw: rawEml(eml) }),
       ingestEmail(env, { ...input, raw: rawEml(eml) }),
@@ -181,7 +182,9 @@ describe("inbound handler", () => {
     expect(results.filter((r) => "id" in r)).toHaveLength(1);
     expect(results.filter((r) => "duplicate" in r)).toHaveLength(1);
     expect((await listMessages(env, {})).messages).toHaveLength(1);
-    expect((await env.R2.list({ prefix: "raw/" })).objects).toHaveLength(1);
+    const added = (await env.R2.list()).objects.map((o) => o.key).filter((k) => !before.has(k));
+    expect(added.filter((k) => k.startsWith("raw/"))).toHaveLength(1);
+    expect(added.filter((k) => k.startsWith("att/"))).toHaveLength(1);
   });
 
   it("runs retention from scheduled", async () => {
