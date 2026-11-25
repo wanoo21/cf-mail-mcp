@@ -3,6 +3,8 @@ export type MessageRow = {
   address: string;
   from_addr: string;
   to_addr: string;
+  to_header: string | null;
+  cc_header: string | null;
   subject: string;
   rfc_message_id: string | null;
   in_reply_to: string | null;
@@ -40,8 +42,8 @@ export async function insertMessage(
   files: { id: string; filename: string; content_type: string; content: BufferSource }[],
 ) {
   const inserted = await env.DB.prepare(
-    `INSERT INTO messages (id, address, from_addr, to_addr, subject, rfc_message_id, in_reply_to, references_header, text_body, auth_results, received_at, read, auto_reply, raw_r2_key)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `INSERT INTO messages (id, address, from_addr, to_addr, to_header, cc_header, subject, rfc_message_id, in_reply_to, references_header, text_body, auth_results, received_at, read, auto_reply, raw_r2_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
      ON CONFLICT(address, rfc_message_id) WHERE rfc_message_id IS NOT NULL DO NOTHING`,
   )
     .bind(
@@ -49,6 +51,8 @@ export async function insertMessage(
       row.address,
       row.from_addr,
       row.to_addr,
+      row.to_header,
+      row.cc_header,
       row.subject,
       row.rfc_message_id,
       row.in_reply_to,

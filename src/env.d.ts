@@ -1,6 +1,8 @@
 interface SendEmail {
   send(message: {
     to: string | string[];
+    cc?: string | string[];
+    bcc?: string | string[];
     from: string;
     subject: string;
     text?: string;

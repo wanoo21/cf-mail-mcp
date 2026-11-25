@@ -107,4 +107,162 @@ describe("allowlist and cap", () => {
       },
     });
   });
+
+  it("passes cc and bcc to the email binding", async () => {
+    const env = testEnv({ ALLOWED_RECIPIENTS: "*", DAILY_SEND_CAP: "1" });
+    const sent: unknown[] = [];
+    env.EMAIL = {
+      async send(msg) {
+        sent.push(msg);
+        return { messageId: "out-1" };
+      },
+    };
+    const now = Date.parse("2026-10-08T15:00:00.000Z");
+    expect(
+      await sendMail(
+        env,
+        {
+          to: "owner@example.com",
+          cc: "a@example.com",
+          bcc: ["b@example.com", "c@example.com"],
+          subject: "x",
+          text: "hi",
+        },
+        now,
+      ),
+    ).toEqual({ messageId: "out-1" });
+    expect(sent[0]).toMatchObject({
+      to: "owner@example.com",
+      cc: "a@example.com",
+      bcc: ["b@example.com", "c@example.com"],
+      from: "agent@mail.example.com",
+    });
+    expect(await sendMail(env, { to: "z@z.com", cc: "a@a.com", subject: "x", text: "hi" }, now)).toEqual({
+      error: "daily send cap reached (1)",
+    });
+  });
+
+  it("rejects the whole send when any address is not allowed", async () => {
+    const env = testEnv({ ALLOWED_RECIPIENTS: "owner@example.com,ok@example.com" });
+    const sent: unknown[] = [];
+    env.EMAIL = {
+      async send(msg) {
+        sent.push(msg);
+        return { messageId: "out" };
+      },
+    };
+    const r = await sendMail(env, {
+      to: ["owner@example.com", "nope@example.com"],
+      cc: "also@example.com",
+      bcc: "OK@example.com",
+      subject: "x",
+      text: "hi",
+    });
+    expect(r).toEqual({ error: "recipient not allowed: nope@example.com, also@example.com" });
+    expect(sent).toHaveLength(0);
+  });
+
+  it("caps to, cc, and bcc together after dedupe", async () => {
+    const env = testEnv({ ALLOWED_RECIPIENTS: "*" });
+    const sent: unknown[] = [];
+    env.EMAIL = {
+      async send(msg) {
+        sent.push(msg);
+        return { messageId: "out" };
+      },
+    };
+    const to = Array.from({ length: 40 }, (_, i) => `a${i}@b.com`);
+    const cc = [...to.slice(0, 10).map((a) => a.toUpperCase()), ...Array.from({ length: 11 }, (_, i) => `c${i}@b.com`)];
+    expect(await sendMail(env, { to, cc, subject: "x", text: "hi" })).toEqual({ error: "max 50 recipients" });
+    expect(sent).toHaveLength(0);
+    expect(await sendMail(env, { to, cc: cc.slice(0, -1), bcc: to[0], subject: "x", text: "hi" })).toEqual({
+      messageId: "out",
+    });
+    const msg = sent[0] as { to: string[]; cc: string[]; bcc?: string };
+    expect(msg.to).toHaveLength(40);
+    expect(msg.cc).toEqual(Array.from({ length: 10 }, (_, i) => `c${i}@b.com`));
+    expect(msg.bcc).toBeUndefined();
+  });
+});
+
+const REPLY_ALL_EML = `From: Alice <alice@example.com>
+To: Agent <agent@mail.example.com>, Bob <bob@example.com>, Alice <ALICE@example.com>, Team: frank@example.com;
+Cc: Bob <BOB@example.com>, Carol <carol@example.com>, Other <other@mail.example.com>
+Subject: Hello there
+Message-ID: <all@example.com>
+In-Reply-To: <prev@example.com>
+References: <root@example.com> <prev@example.com>
+Date: Wed, 08 Oct 2026 12:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hello all
+`;
+
+describe("reply all", () => {
+  beforeEach(reset);
+
+  it("keeps the sender in To and copies everyone else to Cc", async () => {
+    const env = testEnv({
+      MAIL_ADDRESS: "agent@mail.example.com,other@mail.example.com",
+      ALLOWED_RECIPIENTS: "*",
+    });
+    const sent: unknown[] = [];
+    env.EMAIL = {
+      async send(msg) {
+        sent.push(msg);
+        return { messageId: "out-1" };
+      },
+    };
+    const r = await ingestEmail(env, { from: "alice@example.com", to: "agent@mail.example.com", raw: rawEml(REPLY_ALL_EML) });
+    if (!("id" in r)) throw new Error("ingest");
+    const row = (await getMessage(env, r.id))!;
+    expect(row.message.to_header).toBe("agent@mail.example.com, bob@example.com, ALICE@example.com, frank@example.com");
+    expect(row.message.cc_header).toBe("BOB@example.com, carol@example.com, other@mail.example.com");
+    await env.R2.delete(row.message.raw_r2_key!);
+    const out = await replyTo(env, row.message, "thanks", "<p>thanks</p>", {
+      reply_all: true,
+      cc: "dave@example.com",
+      bcc: "eve@example.com",
+    });
+    expect(out).toEqual({ messageId: "out-1" });
+    expect(sent[0]).toMatchObject({
+      to: "alice@example.com",
+      cc: ["bob@example.com", "frank@example.com", "carol@example.com", "dave@example.com"],
+      bcc: "eve@example.com",
+      subject: "Re: Hello there",
+      text: "thanks",
+      html: "<p>thanks</p>",
+      headers: {
+        "In-Reply-To": "<all@example.com>",
+        References: "<root@example.com> <prev@example.com> <all@example.com>",
+      },
+    });
+  });
+
+  it("parses raw mail from R2 when to and cc headers are missing", async () => {
+    const env = testEnv({
+      MAIL_ADDRESS: "agent@mail.example.com,other@mail.example.com",
+      ALLOWED_RECIPIENTS: "*",
+    });
+    const sent: unknown[] = [];
+    env.EMAIL = {
+      async send(msg) {
+        sent.push(msg);
+        return { messageId: "out-1" };
+      },
+    };
+    const r = await ingestEmail(env, { from: "alice@example.com", to: "agent@mail.example.com", raw: rawEml(REPLY_ALL_EML) });
+    if (!("id" in r)) throw new Error("ingest");
+    await env.DB.prepare("UPDATE messages SET to_header = NULL, cc_header = NULL WHERE id = ?").bind(r.id).run();
+    const row = (await getMessage(env, r.id))!;
+    expect(row.message.to_header).toBeNull();
+    expect(row.message.cc_header).toBeNull();
+    const out = await replyTo(env, row.message, "thanks", undefined, { reply_all: true });
+    expect(out).toEqual({ messageId: "out-1" });
+    expect(sent[0]).toMatchObject({
+      to: "alice@example.com",
+      cc: ["bob@example.com", "frank@example.com", "carol@example.com"],
+    });
+  });
 });

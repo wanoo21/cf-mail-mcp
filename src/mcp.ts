@@ -143,9 +143,12 @@ export function createMailServer(env: Env, origin: string) {
   server.registerTool(
     "send_message",
     {
-      description: "Send from the configured mailbox address. Recipients must match ALLOWED_RECIPIENTS (exact address, @domain / *@domain, or *). Daily cap applies.",
+      description:
+        "Send from the configured mailbox address. Optional cc and bcc. Every to, cc, and bcc address must match ALLOWED_RECIPIENTS (exact address, @domain / *@domain, or *). The 50-recipient cap counts all of them. Daily cap applies.",
       inputSchema: {
         to: z.union([z.string(), z.array(z.string())]),
+        cc: z.union([z.string(), z.array(z.string())]).optional(),
+        bcc: z.union([z.string(), z.array(z.string())]).optional(),
         subject: z.string(),
         text: z.string(),
         html: z.string().optional(),
@@ -169,17 +172,21 @@ export function createMailServer(env: Env, origin: string) {
   server.registerTool(
     "reply_to_message",
     {
-      description: "Reply to a stored message. Sets In-Reply-To and References. Recipient must match ALLOWED_RECIPIENTS (exact address, @domain / *@domain, or *).",
+      description:
+        "Reply to a stored message. Sets In-Reply-To and References. Optional cc, bcc, and reply_all. reply_all keeps the sender in To and puts original To and Cc on Cc, dropping this mailbox and duplicates. Explicit cc and bcc are included. Every address must match ALLOWED_RECIPIENTS.",
       inputSchema: {
         id: z.string(),
         text: z.string(),
         html: z.string().optional(),
+        cc: z.union([z.string(), z.array(z.string())]).optional(),
+        bcc: z.union([z.string(), z.array(z.string())]).optional(),
+        reply_all: z.boolean().optional(),
       },
     },
-    async ({ id, text, html }) => {
+    async ({ id, text, html, cc, bcc, reply_all }) => {
       const row = await getMessage(env, id);
       if (!row) return fail("not found");
-      const r = await replyTo(env, row.message, text, html);
+      const r = await replyTo(env, row.message, text, html, { cc, bcc, reply_all });
       return "error" in r ? fail(r.error) : ok(r);
     },
   );
