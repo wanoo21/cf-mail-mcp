@@ -1,11 +1,13 @@
 import { isAutoReplyEmail } from "agents/email";
-import PostalMime from "postal-mime";
+import PostalMime, { type Address } from "postal-mime";
 import {
   bodyText,
   canSendTo,
   dailySendCap,
   hmacHex,
   isOurAddress,
+  norm,
+  ourAddresses,
   replySubject,
   sendFrom,
   threadReferences,
@@ -28,6 +30,8 @@ export async function ingestEmail(
     address: input.to.trim().toLowerCase(),
     from_addr: parsed.from?.address ?? input.from,
     to_addr: input.to,
+    to_header: listAddrs(parsed.to).join(", "),
+    cc_header: listAddrs(parsed.cc).join(", "),
     subject: parsed.subject ?? "",
     rfc_message_id: parsed.messageId || null,
     in_reply_to: parsed.inReplyTo ?? null,
@@ -91,12 +95,51 @@ export async function postWebhook(env: Env, event: WebhookEvent, now = Date.now(
 
 export type SendInput = {
   to: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
   subject: string;
   text: string;
   html?: string;
   headers?: Record<string, string>;
   attachments?: { filename: string; type: string; content_base64: string }[];
 };
+
+function listAddrs(list?: Address[]) {
+  const out: string[] = [];
+  for (const a of list ?? []) {
+    if (a.group) {
+      for (const g of a.group) if (g.address) out.push(g.address);
+    } else if (a.address) out.push(a.address);
+  }
+  return out;
+}
+
+function splitAddrs(s: string | null) {
+  if (!s) return [];
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+function addrInput(v?: string | string[]) {
+  return (v == null ? [] : Array.isArray(v) ? v : [v]).map((s) => s.trim()).filter(Boolean);
+}
+
+function dedupe(lists: string[][]) {
+  const seen = new Set<string>();
+  return lists.map((xs) => {
+    const out: string[] = [];
+    for (const x of xs) {
+      const n = norm(x);
+      if (seen.has(n)) continue;
+      seen.add(n);
+      out.push(x);
+    }
+    return out;
+  });
+}
+
+function one(xs: string[]) {
+  return xs.length === 1 ? xs[0] : xs;
+}
 
 export async function sendMail(
   env: Env,
@@ -105,12 +148,12 @@ export async function sendMail(
 ): Promise<{ messageId: string } | { error: string }> {
   const from = sendFrom(env);
   if (!from) return { error: "MAIL_ADDRESS is not set" };
-  const recipients = (Array.isArray(input.to) ? input.to : [input.to]).map((t) => t.trim()).filter(Boolean);
-  if (!recipients.length) return { error: "to is required" };
-  if (recipients.length > 50) return { error: "max 50 recipients" };
-  for (const r of recipients) {
-    if (!canSendTo(env, r)) return { error: `recipient not allowed: ${r}` };
-  }
+  const [to, cc, bcc] = dedupe([addrInput(input.to), addrInput(input.cc), addrInput(input.bcc)]);
+  if (!to.length) return { error: "to is required" };
+  const all = [...to, ...cc, ...bcc];
+  if (all.length > 50) return { error: "max 50 recipients" };
+  const denied = all.filter((r) => !canSendTo(env, r));
+  if (denied.length) return { error: `recipient not allowed: ${denied.join(", ")}` };
   const cap = dailySendCap(env);
   if ((await sentToday(env, now)) >= cap) return { error: `daily send cap reached (${cap})` };
   let bytes = new TextEncoder().encode(input.text).length + new TextEncoder().encode(input.html ?? "").length;
@@ -125,7 +168,9 @@ export async function sendMail(
   });
   if (bytes > 5 * 1024 * 1024) return { error: "message exceeds 5 MiB" };
   const result = await env.EMAIL.send({
-    to: recipients.length === 1 ? recipients[0] : recipients,
+    to: one(to),
+    cc: cc.length ? one(cc) : undefined,
+    bcc: bcc.length ? one(bcc) : undefined,
     from,
     subject: input.subject,
     text: input.text,
@@ -137,11 +182,23 @@ export async function sendMail(
   return { messageId: result.messageId };
 }
 
+async function threadRecipients(env: Env, original: Pick<MessageRow, "to_header" | "cc_header" | "raw_r2_key">) {
+  if (original.to_header != null || original.cc_header != null) {
+    return { to: splitAddrs(original.to_header), cc: splitAddrs(original.cc_header) };
+  }
+  if (!original.raw_r2_key) return { to: [], cc: [] };
+  const obj = await env.R2.get(original.raw_r2_key);
+  if (!obj) return { to: [], cc: [] };
+  const parsed = await PostalMime.parse(await obj.arrayBuffer());
+  return { to: listAddrs(parsed.to), cc: listAddrs(parsed.cc) };
+}
+
 export async function replyTo(
   env: Env,
-  original: Pick<MessageRow, "from_addr" | "subject" | "rfc_message_id" | "references_header">,
+  original: Pick<MessageRow, "from_addr" | "subject" | "rfc_message_id" | "references_header" | "to_header" | "cc_header" | "raw_r2_key">,
   text: string,
   html?: string,
+  extra?: { cc?: string | string[]; bcc?: string | string[]; reply_all?: boolean },
   now = Date.now(),
 ) {
   const headers: Record<string, string> = {};
@@ -150,10 +207,19 @@ export async function replyTo(
     const refs = threadReferences(original.references_header, original.rfc_message_id);
     if (refs) headers.References = refs;
   }
+  let cc = extra?.cc;
+  if (extra?.reply_all) {
+    const orig = await threadRecipients(env, original);
+    const ours = new Set(ourAddresses(env));
+    const built = [...orig.to, ...orig.cc].filter((a) => !ours.has(norm(a)));
+    cc = [...built, ...addrInput(extra.cc)];
+  }
   return sendMail(
     env,
     {
       to: original.from_addr,
+      cc,
+      bcc: extra?.bcc,
       subject: replySubject(original.subject),
       text,
       html,
